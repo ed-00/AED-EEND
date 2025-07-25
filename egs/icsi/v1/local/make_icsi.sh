@@ -52,7 +52,8 @@ find "${ICSI_CORPUS_DIR}/NIST_Trans" -name "*.xml" | while read xml_file; do
 
   # Add entry to wav.scp
   # Kaldi expects 'sph2pipe -f wav <input.sph> |' for sphere files
-  echo "${meeting_id} sph2pipe -f wav ${audio_file} |" >> "${OUTPUT_DATA_DIR}/wav.scp"
+  # We now pipe it through sox to downsample to 8k
+  echo "${meeting_id} sph2pipe -f wav ${audio_file} | sox -t wav - -t wav -r 8000 - |" >> "${OUTPUT_DATA_DIR}/wav.scp"
 
   # Use Python script to parse XML and generate segments, utt2spk, and RTTM
   # The Python script writes to stdout (segments), stderr (utt2spk), and FD 3 (rttm).
