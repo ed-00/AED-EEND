@@ -1,85 +1,80 @@
-import os
 import sys
-import xml.etree.ElementTree as ET
 from collections import defaultdict
 
-def get_speakers_from_file(spk2utt_file):
-    """Reads a spk2utt file and returns a set of speaker IDs."""
-    speakers = set()
+def calculate_speech_overlap(segments_file):
+    """
+    Calculates the percentage of speech overlap from a Kaldi segments file.
+
+    Overlap is defined as the total duration of speech where two or more
+    speakers are talking simultaneously, as a percentage of the total
+    duration of all speech.
+    """
+    reco_to_segments = defaultdict(list)
     try:
-        with open(spk2utt_file) as f:
+        with open(segments_file) as f:
             for line in f:
                 parts = line.strip().split()
-                if parts:
-                    speakers.add(parts[0])
+                if len(parts) != 4:
+                    continue
+                reco_id = parts[1]
+                start_time = float(parts[2])
+                end_time = float(parts[3])
+                if end_time > start_time:
+                    reco_to_segments[reco_id].append((start_time, end_time))
     except FileNotFoundError:
-        print(f"Error: Target speaker file not found at {spk2utt_file}", file=sys.stderr)
-        return None
-    return speakers
+        print(f"Error: Segments file not found at {segments_file}", file=sys.stderr)
+        return None, None, None
+    except ValueError:
+        print(f"Error: Invalid number format in {segments_file}", file=sys.stderr)
+        return None, None, None
 
-def map_all_speakers_to_meetings(corpus_dir):
-    """Parses all ICSI XML files to map each speaker to their meetings."""
-    speaker_to_meetings = defaultdict(list)
-    if not os.path.isdir(corpus_dir):
-        print(f"Error: Corpus directory not found at {corpus_dir}", file=sys.stderr)
-        return None
-    for filename in os.listdir(corpus_dir):
-        if not filename.endswith(".xml"):
-            continue
-        meeting_id = os.path.splitext(filename)[0]
-        xml_file_path = os.path.join(corpus_dir, filename)
-        try:
-            tree = ET.parse(xml_file_path)
-            root = tree.getroot()
-            participants = {seg.get('participant') for seg in root.findall('.//segment[@participant]')}
-            for speaker_id in participants:
-                speaker_to_meetings[speaker_id].append(meeting_id)
-        except ET.ParseError as e:
-            print(f"Warning: Could not parse {filename}: {e}", file=sys.stderr)
-            continue
-    return speaker_to_meetings
+    total_overlapped_duration = 0.0
+    total_speech_duration = 0.0
 
-def analyze_overlap(target_speakers, full_speaker_map):
-    """
-    Calculates the percentage of target speakers who appear in more than one meeting.
-    """
-    if not target_speakers or not full_speaker_map:
-        return 0, 0
-    
-    speakers_with_overlap = 0
-    for speaker in target_speakers:
-        if speaker in full_speaker_map and len(full_speaker_map[speaker]) > 1:
-            speakers_with_overlap += 1
-            
-    total_target_speakers = len(target_speakers)
-    if total_target_speakers == 0:
-        return 0, 0
+    for reco_id, segments in reco_to_segments.items():
+        if not segments:
+            continue
+
+        events = []
+        for start, end in segments:
+            events.append((start, 1))
+            events.append((end, -1))
         
-    overlap_percentage = (speakers_with_overlap / total_target_speakers) * 100
-    return speakers_with_overlap, overlap_percentage
+        events.sort()
+
+        active_speakers = 0
+        last_time = events[0][0]
+        
+        for time, type in events:
+            dt = time - last_time
+            if dt > 1e-9:
+                if active_speakers > 0:
+                    total_speech_duration += dt
+                if active_speakers > 1:
+                    total_overlapped_duration += dt
+            
+            active_speakers += type
+            last_time = time
+    
+    if total_speech_duration == 0:
+        return 0.0, 0.0, 0.0
+
+    overlap_percentage = (total_overlapped_duration / total_speech_duration) * 100
+    return overlap_percentage, total_overlapped_duration, total_speech_duration
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: python {sys.argv[0]} <target_spk2utt_file> <nist_trans_dir>")
+    if len(sys.argv) != 2:
+        print(f"Usage: python {sys.argv[0]} <path_to_segments_file>")
         sys.exit(1)
+        
+    segments_file = sys.argv[1]
+    percent, overlap_dur, total_dur = calculate_speech_overlap(segments_file)
 
-    target_spk_file = sys.argv[1]
-    nist_trans_dir = sys.argv[2]
-
-    # 1. Get the list of speakers to analyze (e.g., from the training set)
-    target_speakers = get_speakers_from_file(target_spk_file)
-    if target_speakers is None:
-        sys.exit(1)
-
-    # 2. Build the global map of all speakers to all their meetings
-    full_speaker_map = map_all_speakers_to_meetings(nist_trans_dir)
-    if full_speaker_map is None:
-        sys.exit(1)
-
-    # 3. Perform the analysis
-    num_overlap, percent_overlap = analyze_overlap(target_speakers, full_speaker_map)
-
-    print("--- Speaker Overlap Analysis ---")
-    print(f"Total unique speakers in the target set: {len(target_speakers)}")
-    print(f"Number of these speakers appearing in >1 meeting: {num_overlap}")
-    print(f"Percentage of speakers with meeting overlap: {percent_overlap:.2f}%") 
+    if percent is not None:
+        print("--- Speech Overlap Analysis ---")
+        print(f"Analyzed file: {segments_file}")
+        print(f"Total duration of all speech (union of segments): {total_dur/3600:.2f} hours")
+        print(f"Total duration of overlapped speech (>1 speaker): {overlap_dur/3600:.2f} hours")
+        print(f"Speech Overlap Percentage: {percent:.2f}%")
+    else:
+        sys.exit(1) 
