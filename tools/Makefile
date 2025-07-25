@@ -4,7 +4,7 @@
 # install tools
 
 # If you want to use prebuild kaldi, make KALDI=<path/to/kaldi_root>
-KALDI :=
+KALDI :=/opt/kaldi
 # Specify cuda root path installed in your environment
 CUDA_PATH := /usr/local/cuda
 CUDA_VERSION := $(shell $(CUDA_PATH)/bin/nvcc --version | tail -n1 | awk '{print substr($$5,0,length($$5)-1)}')
@@ -31,12 +31,22 @@ miniconda3: miniconda3.sh
 
 # virtual environment of python
 miniconda3/envs/eend/bin: miniconda3
+	miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+	miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 	miniconda3/bin/conda update -y conda
 	miniconda3/bin/conda env create -f environment.yml
-	miniconda3/envs/eend/bin/pip install cupy-cuda$(subst .,,$(CUDA_VERSION))==6.2.0 chainer==6.2.0
+	miniconda3/envs/eend/bin/pip install cupy-cuda100==6.2.0 chainer==6.2.0
 update:
 	miniconda3/bin/conda env update -f environment.yml
 
 env.sh: miniconda3/envs/eend/bin
 	cp env.sh.in env.sh
+	echo 'export PATH=$(CURDIR)/miniconda3/envs/eend/bin:$(CURDIR)/miniconda3/bin:$$PATH' >> env.sh
 	echo "export LD_LIBRARY_PATH=$(CUDA_PATH)/lib64:$$LD_LIBRARY_PATH" >> env.sh
+
+clean:
+	rm -rf miniconda3 miniconda3.sh env.sh
+
+reinstall: clean all
+
+.PHONY: all kaldi miniconda3.sh miniconda3 update env.sh clean reinstall
