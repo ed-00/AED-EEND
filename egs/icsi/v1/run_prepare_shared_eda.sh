@@ -1,31 +1,27 @@
 #!/bin/bash
 
-# Copyright 2019 Hitachi, Ltd. (author: Yusuke Fujita, Shota Horiguchi)
+# Copyright 2024 Abed Hameed (author: Abed Hameed)
 # Licensed under the MIT license.
 #
-# This script prepares kaldi-style data sets shared with different experiments
-#   - data/xxxx
-#     callhome, sre, swb2, and swb_cellular datasets
-#   - data/simu_${simu_outputs}
-#     simulation mixtures generated with various options
+# This script prepares kaldi-style data sets for ICSI diarization.
+#   - data/icsi_train
+#   - data/icsi_eval (for evaluation)
+#   - data/simu_${simu_outputs} (for simulated mixtures, if generated)
 
-stage=0
+stage=0 # Controls which part of the script to run. Set to 0 to run all.
 
-# Modify corpus directories
-#  - callhome_dir
-#    CALLHOME (LDC2001S97)
-#  - swb2_phase1_train
-#    Switchboard-2 Phase 1 (LDC98S75)
-#  - data_root
-#    LDC99S79, LDC2002S06, LDC2001S13, LDC2004S07,
-#    LDC2006S44, LDC2011S01, LDC2011S04, LDC2011S09,
-#    LDC2011S10, LDC2012S01, LDC2011S05, LDC2011S08
-#  - musan_root
-#    MUSAN corpus (https://www.openslr.org/17/)
+# --- Modify corpus directories ---
+# Path to the ICSI corpus root directory
+# This directory should contain 'NIST_Trans' (for XML annotations) and 'audio' (for .sph files)
+ICSI_CORPUS_DIR=/path/to/ICSI_Corpus_Root # <<<--- IMPORTANT: SET THIS PATH
+
+# These variables are included for stylistic consistency with the Callhome example,
+# but are not directly used for ICSI data preparation in this script.
 callhome_dir=/export/corpora/NIST/LDC2001S97
 swb2_phase1_train=/export/corpora/LDC/LDC98S75
 data_root=/export/corpora5/LDC
 musan_root=/export/corpora/JHU/musan
+
 # Modify simulated data storage area.
 # This script distributes simulated data under these directories
 simu_actual_dirs=(
@@ -34,125 +30,60 @@ simu_actual_dirs=(
 /export/c09/$USER/diarization-data
 )
 
-# data preparation options
-max_jobs_run=4
-sad_num_jobs=30
-sad_opts="--extra-left-context 79 --extra-right-context 21 --frames-per-chunk 150 --extra-left-context-initial 0 --extra-right-context-final 0 --acwt 0.3"
-sad_graph_opts="--min-silence-duration=0.03 --min-speech-duration=0.3 --max-speech-duration=10.0"
-sad_priors_opts="--sil-scale=0.1"
+# --- Data preparation options ---
+max_jobs_run=4 # Included for stylistic consistency
+sad_num_jobs=30 # Included for stylistic consistency
+sad_opts="--extra-left-context 79 --extra-right-context 21 --frames-per-chunk 150 --extra-left-context-initial 0 --extra-right-context-final 0 --acwt 0.3" # Included for stylistic consistency
+sad_graph_opts="--min-silence-duration=0.03 --min-speech-duration=0.3 --max-speech-duration=10.0" # Included for stylistic consistency
+sad_priors_opts="--sil-scale=0.1" # Included for stylistic consistency
 
-# simulation options
+# --- Feature extraction configuration ---
+nj=8 # Number of parallel jobs for feature extraction for MFCCs
+mfcc_config=conf/mfcc.conf # MFCC configuration file
+
+# --- Simulation options ---
 simu_opts_overlap=yes
-simu_opts_num_speaker_array=(1 2 3 4)
-simu_opts_sil_scale_array=(2 2 5 9)
+simu_opts_num_speaker_array=(1 2 3 4) # Array of speaker counts for simulation
+simu_opts_sil_scale_array=(2 2 5 9) # Array of silence scales for simulation
 simu_opts_rvb_prob=0.5
 simu_opts_num_train=100000
 simu_opts_min_utts=10
 simu_opts_max_utts=20
 
+# --- Source Kaldi environment and parse options ---
 . path.sh
 . cmd.sh
-. parse_options.sh || exit
+. parse_options.sh || exit 1
 
 if [ $stage -le 0 ]; then
-    echo "prepare kaldi-style datasets"
-    # Prepare CALLHOME dataset. This will be used to evaluation.
-    if ! validate_data_dir.sh --no-text --no-feats data/callhome1_spkall \
-        || ! validate_data_dir.sh --no-text --no-feats data/callhome2_spkall; then
-        # imported from https://github.com/kaldi-asr/kaldi/blob/master/egs/callhome_diarization/v1
-        local/make_callhome.sh $callhome_dir data
-        # Generate two-speaker subsets
-        for dset in callhome1 callhome2; do
-            # Extract two-speaker recordings in wav.scp
-            copy_data_dir.sh data/${dset} data/${dset}_spkall
-            # Regenerate segments file from fullref.rttm
-            #  $2: recid, $4: start_time, $5: duration, $8: speakerid
-            awk '{printf "%s_%s_%07d_%07d %s %.2f %.2f\n", \
-                 $2, $8, $4*100, ($4+$5)*100, $2, $4, $4+$5}' \
-                data/callhome/fullref.rttm | sort > data/${dset}_spkall/segments
-            utils/fix_data_dir.sh data/${dset}_spkall
-            # Speaker ID is '[recid]_[speakerid]
-            awk '{split($1,A,"_"); printf "%s %s_%s\n", $1, A[1], A[2]}' \
-                data/${dset}_spkall/segments > data/${dset}_spkall/utt2spk
-            utils/fix_data_dir.sh data/${dset}_spkall
-            # Generate rttm files for scoring
-            steps/segmentation/convert_utt2spk_and_segments_to_rttm.py \
-                data/${dset}_spkall/utt2spk data/${dset}_spkall/segments \
-                data/${dset}_spkall/rttm
-            utils/data/get_reco2dur.sh data/${dset}_spkall
-        done
+    echo "Stage 0: Prepare ICSI kaldi-style datasets and extract features"
+    # Prepare ICSI dataset. This will be used for training/evaluation.
+    if ! utils/validate_data_dir.sh --no-text --no-feats data/icsi_train; then
+        echo "Running local/make_icsi.sh to prepare ICSI data..."
+        local/make_icsi.sh "${ICSI_CORPUS_DIR}" data/icsi_train || exit 1
+    else
+        echo "Data directory 'data/icsi_train' already exists and is valid. Skipping data preparation."
     fi
-    # Prepare a collection of NIST SRE and SWB data. This will be used to train,
-    if ! validate_data_dir.sh --no-text --no-feats data/swb_sre_comb; then
-        local/make_sre.sh $data_root data
-        # Prepare SWB for x-vector DNN training.
-        local/make_swbd2_phase1.pl $swb2_phase1_train \
-            data/swbd2_phase1_train
-        local/make_swbd2_phase2.pl $data_root/LDC99S79 \
-            data/swbd2_phase2_train
-        local/make_swbd2_phase3.pl $data_root/LDC2002S06 \
-            data/swbd2_phase3_train
-        local/make_swbd_cellular1.pl $data_root/LDC2001S13 \
-            data/swbd_cellular1_train
-        local/make_swbd_cellular2.pl $data_root/LDC2004S07 \
-            data/swbd_cellular2_train
-        # Combine swb and sre data
-        utils/combine_data.sh data/swb_sre_comb \
-            data/swbd_cellular1_train data/swbd_cellular2_train \
-            data/swbd2_phase1_train \
-            data/swbd2_phase2_train data/swbd2_phase3_train data/sre
-    fi
-    # musan data. "back-ground
-    if ! validate_data_dir.sh --no-text --no-feats data/musan_noise_bg; then
-        local/make_musan.sh $musan_root data
-        utils/copy_data_dir.sh data/musan_noise data/musan_noise_bg
-        awk '{if(NR>1) print $1,$1}'  $musan_root/noise/free-sound/ANNOTATIONS > data/musan_noise_bg/utt2spk
-        utils/fix_data_dir.sh data/musan_noise_bg
-    fi
-    # simu rirs 8k
-    if ! validate_data_dir.sh --no-text --no-feats data/simu_rirs_8k; then
-        mkdir -p data/simu_rirs_8k
-        if [ ! -e sim_rir_8k.zip ]; then
-            wget --no-check-certificate http://www.openslr.org/resources/26/sim_rir_8k.zip
+
+    # Extract MFCC features and compute CMVN stats for the prepared data.
+    # This is done immediately after data preparation for the base dataset.
+    for x in icsi_train; do
+        if [ ! -f "data/${x}/feats.scp" ]; then
+            echo "Running steps/make_mfcc.sh and steps/compute_cmvn_stats.sh for data/${x}..."
+            steps/make_mfcc.sh --mfcc-config "${mfcc_config}" --nj "${nj}" --cmd "${train_cmd}" "data/${x}" || exit 1;
+            steps/compute_cmvn_stats.sh "data/${x}" || exit 1;
+        else
+            echo "MFCC features for 'data/${x}' already exist. Skipping feature extraction."
         fi
-        unzip sim_rir_8k.zip -d data/sim_rir_8k
-        find $PWD/data/sim_rir_8k -iname "*.wav" \
-            | awk '{n=split($1,A,/[\/\.]/); print A[n-3]"_"A[n-1], $1}' \
-            | sort > data/simu_rirs_8k/wav.scp
-        awk '{print $1, $1}' data/simu_rirs_8k/wav.scp > data/simu_rirs_8k/utt2spk
-        utils/fix_data_dir.sh data/simu_rirs_8k
-    fi
-    # Automatic segmentation using pretrained SAD model
-    #     it will take one day using 30 CPU jobs:
-    #     make_mfcc: 1 hour, compute_output: 18 hours, decode: 0.5 hours
-    sad_nnet_dir=exp/segmentation_1a/tdnn_stats_asr_sad_1a
-    sad_work_dir=exp/segmentation_1a/tdnn_stats_asr_sad_1a
-    if ! validate_data_dir.sh --no-text $sad_work_dir/swb_sre_comb_seg; then
-        if [ ! -d exp/segmentation_1a ]; then
-            wget http://kaldi-asr.org/models/4/0004_tdnn_stats_asr_sad_1a.tar.gz
-            tar zxf 0004_tdnn_stats_asr_sad_1a.tar.gz
-        fi
-        steps/segmentation/detect_speech_activity.sh \
-            --nj $sad_num_jobs \
-            --graph-opts "$sad_graph_opts" \
-            --transform-probs-opts "$sad_priors_opts" $sad_opts \
-            data/swb_sre_comb $sad_nnet_dir mfcc_hires $sad_work_dir \
-            $sad_work_dir/swb_sre_comb || exit 1
-    fi
-    # Extract >1.5 sec segments and split into train/valid sets
-    if ! validate_data_dir.sh --no-text --no-feats data/swb_sre_cv; then
-        copy_data_dir.sh data/swb_sre_comb data/swb_sre_comb_seg
-        awk '$4-$3>1.5{print;}' $sad_work_dir/swb_sre_comb_seg/segments > data/swb_sre_comb_seg/segments
-        cp $sad_work_dir/swb_sre_comb_seg/{utt2spk,spk2utt} data/swb_sre_comb_seg
-        fix_data_dir.sh data/swb_sre_comb_seg
-        utils/subset_data_dir_tr_cv.sh data/swb_sre_comb_seg data/swb_sre_tr data/swb_sre_cv
-    fi
+    done
 fi
 
 simudir=data/simu
 if [ $stage -le 1 ]; then
-    echo "simulation of mixture"
+    echo "Stage 1: Simulation of mixtures (using ICSI as base data)"
     mkdir -p $simudir/.work
+
+    # Determine which mixture generation scripts to use based on overlap option
     random_mixture_cmd=random_mixture_nooverlap.py
     make_mixture_cmd=make_mixture_nooverlap.py
     if [ "$simu_opts_overlap" == "yes" ]; then
@@ -160,77 +91,92 @@ if [ $stage -le 1 ]; then
         make_mixture_cmd=make_mixture.py
     fi
 
+    # Loop through different speaker counts and silence scales for simulation
     for ((i=0; i<${#simu_opts_sil_scale_array[@]}; ++i)); do
         simu_opts_num_speaker=${simu_opts_num_speaker_array[i]}
         simu_opts_sil_scale=${simu_opts_sil_scale_array[i]}
-        for dset in swb_sre_tr swb_sre_cv; do
-            if [ "$dset" == "swb_sre_tr" ]; then
-                n_mixtures=${simu_opts_num_train}
-            else
-                n_mixtures=500
-            fi
-            simuid=${dset}_ns${simu_opts_num_speaker}_beta${simu_opts_sil_scale}_${n_mixtures}
-            # check if you have the simulation
-            if ! validate_data_dir.sh --no-text --no-feats $simudir/data/$simuid; then
-                # random mixture generation
-                $train_cmd $simudir/.work/random_mixture_$simuid.log \
-                    $random_mixture_cmd --n_speakers $simu_opts_num_speaker --n_mixtures $n_mixtures \
-                    --speech_rvb_probability $simu_opts_rvb_prob \
-                    --sil_scale $simu_opts_sil_scale \
-                    data/$dset data/musan_noise_bg data/simu_rirs_8k \
-                    \> $simudir/.work/mixture_$simuid.scp
-                nj=100
-                mkdir -p $simudir/wav/$simuid
-                # distribute simulated data to $simu_actual_dir
-                split_scps=
-                for n in $(seq $nj); do
-                    split_scps="$split_scps $simudir/.work/mixture_$simuid.$n.scp"
-                    mkdir -p $simudir/.work/data_$simuid.$n
-                    actual=${simu_actual_dirs[($n-1)%${#simu_actual_dirs[@]}]}/$simudir/wav/$simuid/$n
-                    mkdir -p $actual
-                    ln -nfs $actual $simudir/wav/$simuid/$n
-                done
-                utils/split_scp.pl $simudir/.work/mixture_$simuid.scp $split_scps || exit 1
+        
+        # We will use 'icsi_train' as the base dataset for simulation
+        # For demonstration, we'll create a single simulated set.
+        # In a real scenario, you might split icsi_train into train/dev/eval for simulation.
+        dset_base=icsi_train
+        n_mixtures=${simu_opts_num_train} # Use the configured number of training mixtures
 
-                $simu_cmd --max-jobs-run 32 JOB=1:$nj $simudir/.work/make_mixture_$simuid.JOB.log \
-                    $make_mixture_cmd --rate=8000 \
-                    $simudir/.work/mixture_$simuid.JOB.scp \
-                    $simudir/.work/data_$simuid.JOB $simudir/wav/$simuid/JOB
-                utils/combine_data.sh $simudir/data/$simuid $simudir/.work/data_$simuid.*
-                steps/segmentation/convert_utt2spk_and_segments_to_rttm.py \
-                    $simudir/data/$simuid/utt2spk $simudir/data/$simuid/segments \
-                    $simudir/data/$simuid/rttm
-                utils/data/get_reco2dur.sh $simudir/data/$simuid
-            fi
-            simuid_concat=${dset}_ns"$(IFS="n"; echo "${simu_opts_num_speaker_array[*]}")"_beta"$(IFS="n"; echo "${simu_opts_sil_scale_array[*]}")"_${n_mixtures}
-            mkdir -p $simudir/data/$simuid_concat
-            for f in `ls -F $simudir/data/$simuid | grep -v "/"`; do
-                cat $simudir/data/$simuid/$f >> $simudir/data/$simuid_concat/$f
+        simuid=${dset_base}_ns${simu_opts_num_speaker}_beta${simu_opts_sil_scale}_${n_mixtures}
+        
+        # Check if the simulation data already exists
+        if ! utils/validate_data_dir.sh --no-text --no-feats $simudir/data/$simuid; then
+            echo "Generating random mixtures for $simuid..."
+            # Random mixture generation (requires random_mixture.py/random_mixture_nooverlap.py)
+            # Note: You would need to provide or adapt these Python scripts for ICSI.
+            # This is a placeholder structure.
+            $train_cmd $simudir/.work/random_mixture_$simuid.log \
+                $random_mixture_cmd --n_speakers $simu_opts_num_speaker --n_mixtures $n_mixtures \
+                --speech_rvb_probability $simu_opts_rvb_prob \
+                --sil_scale $simu_opts_sil_scale \
+                data/$dset_base data/musan_noise_bg data/simu_rirs_8k \
+                \> $simudir/.work/mixture_$simuid.scp || { echo "Error in random mixture generation"; exit 1; }
+            
+            nj_simu=100 # Number of jobs for mixture generation, as in Callhome example
+            mkdir -p $simudir/wav/$simuid
+            
+            # Distribute simulated data to actual directories (placeholder)
+            split_scps=
+            for n in $(seq $nj_simu); do
+                split_scps="$split_scps $simudir/.work/mixture_$simuid.$n.scp"
+                mkdir -p $simudir/.work/data_$simuid.$n
+                actual=${simu_actual_dirs[($n-1)%${#simu_actual_dirs[@]}]}/$simudir/wav/$simuid/$n
+                mkdir -p $actual
+                ln -nfs $actual $simudir/wav/$simuid/$n
             done
+            utils/split_scp.pl $simudir/.work/mixture_$simuid.scp $split_scps || exit 1
+
+            # Make mixtures (requires make_mixture.py/make_mixture_nooverlap.py)
+            # This is a placeholder structure.
+            $train_cmd --max-jobs-run 32 JOB=1:$nj_simu $simudir/.work/make_mixture_$simuid.JOB.log \
+                $make_mixture_cmd --rate=8000 \
+                $simudir/.work/mixture_$simuid.JOB.scp \
+                $simudir/.work/data_$simuid.JOB $simudir/wav/$simuid/JOB || { echo "Error in make mixture"; exit 1; }
+            
+            # Combine generated data
+            utils/combine_data.sh $simudir/data/$simuid $simudir/.work/data_$simuid.* || exit 1
+            
+            # Generate RTTM for simulated data
+            steps/segmentation/convert_utt2spk_and_segments_to_rttm.py \
+                $simudir/data/$simuid/utt2spk $simudir/data/$simuid/segments \
+                $simudir/data/$simuid/rttm || exit 1
+            
+            utils/data/get_reco2dur.sh $simudir/data/$simuid || exit 1
+        else
+            echo "Simulated data '$simudir/data/$simuid' already exists and is valid. Skipping simulation."
+        fi
+        
+        # Concatenate simulated data (as in the Callhome example)
+        # This part is for combining results from different simulation parameters.
+        simuid_concat=${dset_base}_ns"$(IFS="n"; echo "${simu_opts_num_speaker_array[*]}")"_beta"$(IFS="n"; echo "${simu_opts_sil_scale_array[*]}")"_${n_mixtures}
+        mkdir -p $simudir/data/$simuid_concat
+        for f in `ls -F $simudir/data/$simuid | grep -v "/"`; do
+            cat $simudir/data/$simuid/$f >> $simudir/data/$simuid_concat/$f
         done
     done
 fi
 
-if [ $stage -le 3 ]; then
-    # compose eval/callhome2_spkall
-    eval_set=data/eval/callhome2_spkall
-    if ! validate_data_dir.sh --no-text --no-feats $eval_set; then
-        utils/copy_data_dir.sh data/callhome2_spkall $eval_set
-        cp data/callhome2_spkall/rttm $eval_set/rttm
-        awk -v dstdir=wav/eval/callhome2_spkall '{print $1, dstdir"/"$1".wav"}' data/callhome2_spkall/wav.scp > $eval_set/wav.scp
-        mkdir -p wav/eval/callhome2_spkall
-        wav-copy scp:data/callhome2_spkall/wav.scp scp:$eval_set/wav.scp
-        utils/data/get_reco2dur.sh $eval_set
-    fi
-
-    # compose eval/callhome1_spkall
-    adapt_set=data/eval/callhome1_spkall
-    if ! validate_data_dir.sh --no-text --no-feats $adapt_set; then
-        utils/copy_data_dir.sh data/callhome1_spkall $adapt_set
-        cp data/callhome1_spkall/rttm $adapt_set/rttm
-        awk -v dstdir=wav/eval/callhome1_spkall '{print $1, dstdir"/"$1".wav"}' data/callhome1_spkall/wav.scp > $adapt_set/wav.scp
-        mkdir -p wav/eval/callhome1_spkall
-        wav-copy scp:data/callhome1_spkall/wav.scp scp:$adapt_set/wav.scp
-        utils/data/get_reco2dur.sh $adapt_set
+if [ $stage -le 2 ]; then
+    echo "Stage 2: Compose evaluation set (icsi_eval)"
+    # This stage composes a dedicated evaluation set from the prepared ICSI data.
+    eval_set=data/icsi_eval
+    if ! utils/validate_data_dir.sh --no-text --no-feats $eval_set; then
+        echo "Composing evaluation set '$eval_set'..."
+        utils/copy_data_dir.sh data/icsi_train $eval_set
+        # Copy the RTTM from the 'icsi_train' set to 'icsi_eval'.
+        # If you have specific ICSI evaluation RTTMs, replace this with filtering or direct copying.
+        cp data/icsi_train/rttm $eval_set/rttm
+        # Ensure reco2dur is present for the evaluation set
+        utils/data/get_reco2dur.sh $eval_set || exit 1
+        echo "Evaluation set '$eval_set' composed."
+    else
+        echo "Evaluation set '$eval_set' already exists and is valid. Skipping composition."
     fi
 fi
+
+echo "All shared data preparation stages complete for ICSI diarization."
