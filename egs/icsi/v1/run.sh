@@ -10,8 +10,8 @@ stage=0
 # Including piped commands in wav.scp makes training very slow
 train_set=data/simu/data/swb_sre_tr_ns2_beta2_100000
 valid_set=data/simu/data/swb_sre_cv_ns2_beta2_500
-adapt_set=data/eval/callhome1_spk2
-adapt_valid_set=data/eval/callhome2_spk2
+adapt_set=data/icsi_train
+adapt_valid_set=data/icsi_eval
 
 # Base config files for {train,infer}.py
 train_config=conf/train.yaml
@@ -127,14 +127,14 @@ if [ $stage -le 3 ]; then
         echo " if you want to retry, please remove it."
         exit 1
     fi
-    for dset in callhome2_spk2; do
+    for dset in icsi_eval; do
         work=$infer_dir/$dset/.work
         mkdir -p $work
         $infer_cmd $work/infer.log \
             infer.py \
             -c $infer_config \
             $infer_args \
-            data/eval/$dset \
+            data/$dset \
             $model_dir/$ave_id.nnet.npz \
             $infer_dir/$dset \
             || exit 1
@@ -149,7 +149,7 @@ if [ $stage -le 4 ]; then
         echo " if you want to retry, please remove it."
         exit 1
     fi
-    for dset in callhome2_spk2; do
+    for dset in icsi_eval; do
         work=$scoring_dir/$dset/.work
         mkdir -p $work
         find $infer_dir/$dset -iname "*.h5" > $work/file_list_$dset
@@ -159,7 +159,7 @@ if [ $stage -le 4 ]; then
             --frame_shift=$infer_frame_shift --subsampling=$infer_subsampling --sampling_rate=$infer_sampling_rate \
             $work/file_list_$dset $scoring_dir/$dset/hyp_${th}_$med.rttm
         md-eval.pl -c 0.25 \
-            -r data/eval/$dset/rttm \
+            -r data/$dset/rttm \
             -s $scoring_dir/$dset/hyp_${th}_$med.rttm > $scoring_dir/$dset/result_th${th}_med${med}_collar0.25 2>/dev/null || exit
         done
         done
@@ -205,12 +205,12 @@ if [ $stage -le 7 ]; then
         echo " if you want to retry, please remove it."
         exit 1
     fi
-    for dset in callhome2_spk2; do
+    for dset in icsi_eval; do
         work=$infer_dir/$dset/.work
         mkdir -p $work
         $train_cmd $work/infer.log \
             infer.py -c $infer_config \
-            data/eval/${dset} \
+            data/$dset \
             $adapt_model_dir/$adapt_ave_id.nnet.npz \
             $infer_dir/$dset \
             || exit 1
@@ -225,7 +225,7 @@ if [ $stage -le 8 ]; then
         echo " if you want to retry, please remove it."
         exit 1
     fi
-    for dset in callhome2_spk2; do
+    for dset in icsi_eval; do
         work=$scoring_dir/$dset/.work
         mkdir -p $work
         find $infer_dir/$dset -iname "*.h5" > $work/file_list_$dset
@@ -235,7 +235,7 @@ if [ $stage -le 8 ]; then
             --frame_shift=$infer_frame_shift --subsampling=$infer_subsampling --sampling_rate=$infer_sampling_rate \
             $work/file_list_$dset $scoring_dir/$dset/hyp_${th}_$med.rttm
         md-eval.pl -c 0.25 \
-            -r data/eval/$dset/rttm \
+            -r data/$dset/rttm \
             -s $scoring_dir/$dset/hyp_${th}_$med.rttm > $scoring_dir/$dset/result_th${th}_med${med}_collar0.25 2>/dev/null || exit
         done
         done
@@ -243,7 +243,7 @@ if [ $stage -le 8 ]; then
 fi
 
 if [ $stage -le 9 ]; then
-    for dset in callhome2_spk2; do
+    for dset in icsi_eval; do
         best_score.sh $scoring_dir/$dset
     done
 fi

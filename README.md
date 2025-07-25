@@ -87,6 +87,32 @@ local/run_blstm.sh
 ./run_eda.sh
 ```
 
+## ICSI multi-speaker experiment
+### Configuraition
+- Modify `egs/icsi/v1/cmd.sh` according to your job schedular.
+If you use your local machine, use "run.pl".
+If you use Grid Engine, use "queue.pl"
+If you use SLURM, use "slurm.pl".
+For more information about cmd.sh see http://kaldi-asr.org/doc/queue.html.
+- Modify `egs/icsi/v1/run_prepare_shared.sh` according to storage paths of your corpora.
+
+### Data preparation
+```bash
+cd egs/icsi/v1
+./run_prepare_shared.sh
+# If you want to conduct 1-6 speaker experiments, run below.
+# You also have to set paths to your corpora properly.
+./run_prepare_shared_eda.sh
+```
+### Self-attention-based model using 2-speaker mixtures
+```bash
+./run.sh
+```
+### Self-attention-based model with EDA using 1-6-speaker mixtures
+```bash
+./run_eda.sh
+```
+
 ## References
 [1] Yusuke Fujita, Naoyuki Kanda, Shota Horiguchi, Kenji Nagamatsu, Shinji Watanabe, "
 End-to-End Neural Speaker Diarization with Permutation-free Objectives," Proc. Interspeech, pp. 4300-4304, 2019
