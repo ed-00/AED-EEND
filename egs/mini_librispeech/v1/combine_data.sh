@@ -13,7 +13,7 @@
 # --- Configuration -----------------------------------------------------------
 
 # Destination combined data dir
-combine_dest_dir=d/workspace/EENDv1/egs/mini_librispeech/v1/ata/simu/data/train_clean_5_ns1to7_10000_all
+combine_dest_dir=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1to7_10000_all
 
 # Selection unit per source: reco | utt | spk
 combine_unit=reco
@@ -29,18 +29,22 @@ combine_prefix_mode=index
 
 # List of source data dirs to draw from
 combine_src_dirs=(
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns2_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns3_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns4_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns5_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns6_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns7_beta2_10000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns2_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns3_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns4_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns5_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns6_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns7_beta2_100000
 )
 
 # Choose one of the following to define quotas per source (same length as combine_src_dirs):
 # 1) Percentages per source (0-100, applied to each source independently)
-combine_src_percentages=(15 15 15 15 15 15 15)
+combine_src_percentages=()
+
+# Optional: specify a total number of mixtures (recordings) across all sources.
+# If > 0 and both percentages and counts are empty, counts will be evenly split.
+combine_total_reco=100000
 
 # 2) Fixed counts per source (number of reco/utt/spk to select per source)
 combine_src_counts=()
@@ -53,16 +57,18 @@ combine_cap_to_available=true
 combine_dest_dir_dev=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1to7_500each
 # Dev sources
 combine_src_dirs_dev=(
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns2_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns3_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns4_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns5_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns6_beta2_10000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns7_beta2_10000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns2_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns3_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns4_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns5_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns6_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns7_beta2_100000
 )
 # Choose either percentages or counts for dev (counts default to 500 each)
-combine_src_percentages_dev=(1 1 1 1 1 1 1)
+combine_src_percentages_dev=()
+# Total mixtures (recordings) for dev (7 sources × 500 each by default)
+combine_total_reco_dev=3500
 combine_src_counts_dev=()
 combine_cap_to_available_dev=true
 
@@ -70,8 +76,24 @@ combine_cap_to_available_dev=true
 
 set -euo pipefail
 
+# Ensure a valid locale for Perl and tools to avoid warnings
+export LC_ALL=C.UTF-8
+
 # Ensure Kaldi paths
 . path.sh
+
+# If neither percentages nor counts are provided, derive equal per-source counts
+# based on combine_total_reco (when > 0).
+if [ ${#combine_src_counts[@]} -eq 0 ] && [ ${#combine_src_percentages[@]} -eq 0 ] && [ "${combine_total_reco:-0}" -gt 0 ]; then
+  nsrc=${#combine_src_dirs[@]}
+  base=$(( combine_total_reco / nsrc ))
+  rem=$(( combine_total_reco % nsrc ))
+  combine_src_counts=()
+  for ((i=0; i<nsrc; i++)); do
+    extra=$(( i < rem ? 1 : 0 ))
+    combine_src_counts+=( $(( base + extra )) )
+  done
+fi
 
 # Disable CLI parsing; values are hard-coded above
 # . utils/parse_options.sh || exit 1
@@ -188,9 +210,11 @@ for src_dir in "${combine_src_dirs[@]}"; do
   # Create selection lists and subset
   case "$combine_unit" in
     reco)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/wav.scp" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/rec.list"
+      set -o pipefail
       if [ -f "$src_dir/segments" ]; then
         awk 'NR==FNR{r[$1]=1;next} ($2 in r){print $1}' \
           "$sd/rec.list" "$src_dir/segments" > "$sd/utt.list"
@@ -200,15 +224,19 @@ for src_dir in "${combine_src_dirs[@]}"; do
       utils/subset_data_dir.sh --utt-list "$sd/utt.list" "$src_dir" "$sd/raw"
       ;;
     utt)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/utt2spk" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/utt.list"
+      set -o pipefail
       utils/subset_data_dir.sh --utt-list "$sd/utt.list" "$src_dir" "$sd/raw"
       ;;
     spk)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/spk2utt" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/spk.list"
+      set -o pipefail
       utils/subset_data_dir.sh --spk-list "$sd/spk.list" "$src_dir" "$sd/raw"
       ;;
   esac
@@ -245,6 +273,19 @@ combine_src_dirs=("${combine_src_dirs_dev[@]}")
 combine_src_percentages=("${combine_src_percentages_dev[@]}")
 combine_src_counts=("${combine_src_counts_dev[@]}")
 combine_cap_to_available="$combine_cap_to_available_dev"
+
+# If neither percentages nor counts are provided for dev, derive equal per-source
+# counts based on combine_total_reco_dev (when > 0).
+if [ ${#combine_src_counts[@]} -eq 0 ] && [ ${#combine_src_percentages[@]} -eq 0 ] && [ "${combine_total_reco_dev:-0}" -gt 0 ]; then
+  nsrc=${#combine_src_dirs[@]}
+  base=$(( combine_total_reco_dev / nsrc ))
+  rem=$(( combine_total_reco_dev % nsrc ))
+  combine_src_counts=()
+  for ((i=0; i<nsrc; i++)); do
+    extra=$(( i < rem ? 1 : 0 ))
+    combine_src_counts+=( $(( base + extra )) )
+  done
+fi
 
 # Validation for dev
 if [ ${#combine_src_dirs[@]} -eq 0 ]; then
@@ -320,9 +361,11 @@ for src_dir in "${combine_src_dirs[@]}"; do
 
   case "$combine_unit" in
     reco)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/wav.scp" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/rec.list"
+      set -o pipefail
       if [ -f "$src_dir/segments" ]; then
         awk 'NR==FNR{r[$1]=1;next} ($2 in r){print $1}' \
           "$sd/rec.list" "$src_dir/segments" > "$sd/utt.list"
@@ -332,15 +375,19 @@ for src_dir in "${combine_src_dirs[@]}"; do
       utils/subset_data_dir.sh --utt-list "$sd/utt.list" "$src_dir" "$sd/raw"
       ;;
     utt)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/utt2spk" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/utt.list"
+      set -o pipefail
       utils/subset_data_dir.sh --utt-list "$sd/utt.list" "$src_dir" "$sd/raw"
       ;;
     spk)
+      set +o pipefail
       cut -d' ' -f1 "$src_dir/spk2utt" \
         | utils/shuffle_list.pl --srand "$combine_seed" \
         | head -n "$want" > "$sd/spk.list"
+      set -o pipefail
       utils/subset_data_dir.sh --spk-list "$sd/spk.list" "$src_dir" "$sd/raw"
       ;;
   esac

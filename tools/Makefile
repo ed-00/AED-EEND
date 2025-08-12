@@ -26,15 +26,25 @@ miniconda3.sh:
 
 miniconda3: miniconda3.sh
 	# -b: non-interactive install
-	# -p: installed directory
-	bash miniconda3.sh -b -p miniconda3
+	# -p: install directory
+	@if [ -d miniconda3 ]; then \
+		echo "miniconda3 already exists; updating (-u)"; \
+		bash miniconda3.sh -b -u -p miniconda3; \
+	else \
+		echo "Installing miniconda3"; \
+		bash miniconda3.sh -b -p miniconda3; \
+	fi
 
 # virtual environment of python
 miniconda3/envs/eend/bin: miniconda3
 	miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 	miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 	miniconda3/bin/conda update -y conda
-	miniconda3/bin/conda env create -f environment.yml
+	@if [ -d miniconda3/envs/eend ]; then \
+		miniconda3/bin/conda env update -f environment.yml; \
+	else \
+		miniconda3/bin/conda env create -f environment.yml; \
+	fi
 	miniconda3/envs/eend/bin/pip install cupy-cuda100==6.2.0 chainer==6.2.0
 update:
 	miniconda3/bin/conda env update -f environment.yml
