@@ -13,7 +13,7 @@
 # --- Configuration -----------------------------------------------------------
 
 # Destination combined data dir
-combine_dest_dir=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1to7_10000_all
+combine_dest_dir=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1to4_100000_all
 
 # Selection unit per source: reco | utt | spk
 combine_unit=reco
