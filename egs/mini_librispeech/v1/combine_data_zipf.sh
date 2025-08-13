@@ -17,7 +17,7 @@ export LC_ALL=C.UTF-8
 # --- Configuration -----------------------------------------------------------
 
 # Destination combined data dir
-combine_dest_dir=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1to7_zipf_s1p0_100000
+combine_dest_dir=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns1to7_zipf_s1p75_100000
 
 # Selection unit per source: reco | utt | spk
 combine_unit=reco
@@ -29,7 +29,7 @@ combine_seed=777
 combine_prefix_mode=index
 
 # Zipf exponent s (>0). Typical values: 0.8..1.4
-zipf_exponent=1.0
+zipf_exponent=1.75
 
 # List of source data dirs to draw from
 combine_src_dirs=(
@@ -48,6 +48,24 @@ combine_total_reco=100000
 
 # If a requested count exceeds what's available in the source, cap it (true/false)
 combine_cap_to_available=true
+
+# --- Dev Configuration (optional) -------------------------------------------
+# Destination combined data dir for dev
+combine_dest_dir_dev=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1to7_zipf_s1p75_3500
+# List of dev source data dirs
+combine_src_dirs_dev=(
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns2_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns3_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns4_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns5_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns6_beta2_100000
+  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns7_beta2_100000
+)
+# Target total number of items across all dev sources
+combine_total_reco_dev=3500
+# If a requested count exceeds what's available in the dev source, cap it
+combine_cap_to_available_dev=true
 
 # ----------------------------------------------------------------------------
 
@@ -320,4 +338,139 @@ if awk -v x="$sum_dur" 'BEGIN{exit (x>0?0:1)}'; then
   echo "Total duration: ${sum_dur}s (${hms})"
 else
   echo "Duration summary: no duration information found (segments/reco2dur missing)."
+fi 
+
+# --- DEV COMBINE PASS --------------------------------------------------------
+
+if [ ${#combine_src_dirs_dev[@]} -gt 0 ]; then
+  if [ "$combine_unit" = reco ] && [ ! "${combine_total_reco_dev:-}" -gt 0 ]; then
+    echo "Error (dev): combine_total_reco_dev must be > 0 for Zipf scaling (unit=reco)." >&2
+    exit 1
+  fi
+
+  nsrc_dev=${#combine_src_dirs_dev[@]}
+  zipf_pcts_str_dev=$(zipf_integer_percentages "$nsrc_dev" "$zipf_exponent")
+  read -r -a zipf_pcts_dev <<< "$zipf_pcts_str_dev"
+
+  case "$combine_unit" in
+    reco)
+      per_src_want_str_dev=$(scale_percentages_to_counts "$zipf_pcts_str_dev" "$combine_total_reco_dev")
+      ;;
+    *)
+      echo "Error (dev): This script currently supports unit=reco. Set combine_unit=reco." >&2
+      exit 1
+      ;;
+  esac
+  read -r -a per_src_want_dev <<< "$per_src_want_str_dev"
+
+  workdir_dev=$(mktemp -d)
+  trap 'rm -rf "$workdir" "$workdir_dev"' EXIT
+  subset_dirs_dev=()
+
+  declare -a per_src_duration_dev
+
+  index=0
+  for src_dir in "${combine_src_dirs_dev[@]}"; do
+    index=$(( index + 1 ))
+
+    if [ ! -f "$src_dir/utt2spk" ]; then
+      echo "Error (dev): Missing $src_dir/utt2spk" >&2
+      exit 1
+    fi
+    if [ "$combine_unit" = reco ] && [ ! -f "$src_dir/wav.scp" ]; then
+      echo "Error (dev): Missing $src_dir/wav.scp for reco-level selection" >&2
+      exit 1
+    fi
+
+    total=$(num_available_items "$src_dir")
+    want=${per_src_want_dev[$((index-1))]}
+    if ${combine_cap_to_available_dev}; then
+      if [ "$want" -gt "$total" ]; then
+        echo "Warning (dev): source #$index ($src_dir): requested $want > available $total; capping to $total" >&2
+        want=$total
+      fi
+    fi
+    if [ "$want" -le 0 ]; then
+      echo "Warning (dev): source #$index ($src_dir): requested 0 items; skipping." >&2
+      continue
+    fi
+
+    prefix=""
+    case "$combine_prefix_mode" in
+      index) prefix="p${index}_" ;;
+      name)  base=$(basename "$src_dir"); prefix="${base}_" ;;
+      none)  prefix="" ;;
+      *) echo "Error (dev): Unknown combine_prefix_mode '$combine_prefix_mode'" >&2; exit 1 ;;
+    esac
+
+    sd="$workdir_dev/subset_$index"
+    mkdir -p "$sd"
+
+    case "$combine_unit" in
+      reco)
+        set +o pipefail
+        cut -d' ' -f1 "$src_dir/wav.scp" \
+          | utils/shuffle_list.pl --srand "$combine_seed" \
+          | head -n "$want" > "$sd/rec.list"
+        set -o pipefail
+        if [ -f "$src_dir/segments" ]; then
+          awk 'NR==FNR{r[$1]=1;next} ($2 in r){print $1}' \
+            "$sd/rec.list" "$src_dir/segments" > "$sd/utt.list"
+        else
+          cp "$sd/rec.list" "$sd/utt.list"
+        fi
+        utils/subset_data_dir.sh --utt-list "$sd/utt.list" "$src_dir" "$sd/raw"
+        ;;
+    esac
+
+    utils/fix_data_dir.sh "$sd/raw" >/dev/null
+
+    if [ -n "$prefix" ]; then
+      utils/copy_data_dir.sh --utt-prefix "$prefix" --spk-prefix "$prefix" "$sd/raw" "$sd/pref"
+      utils/fix_data_dir.sh "$sd/pref" >/dev/null
+      subset_dirs_dev+=("$sd/pref")
+      dur=$(compute_data_dir_duration_seconds "$sd/pref")
+    else
+      subset_dirs_dev+=("$sd/raw")
+      dur=$(compute_data_dir_duration_seconds "$sd/raw")
+    fi
+
+    per_src_duration_dev[$((index-1))]="$dur"
+  done
+
+  mkdir -p "$(dirname "$combine_dest_dir_dev")"
+  if [ ${#subset_dirs_dev[@]} -eq 0 ]; then
+    echo "Error (dev): No subsets were created (check your quotas)." >&2
+    exit 1
+  fi
+  utils/combine_data.sh "$combine_dest_dir_dev" ${subset_dirs_dev[@]}
+  utils/fix_data_dir.sh "$combine_dest_dir_dev" >/dev/null
+  utils/validate_data_dir.sh --no-text "$combine_dest_dir_dev" || true
+
+  echo "Combined DEV data dir created at: $combine_dest_dir_dev"
+
+  {
+    echo "Zipf exponent s=$zipf_exponent"
+    echo "Sources (dev): $nsrc_dev"
+    echo -n "Zipf integer percentages (dev): "
+    echo "$zipf_pcts_str_dev"
+    echo -n "Per-source target counts (dev, unit=$combine_unit): "
+    echo "$per_src_want_str_dev"
+  } >&2
+
+  sum_dur_dev=$(printf "%s\n" "${per_src_duration_dev[@]}" | awk '{s+=$1} END{printf("%.6f\n", s+0)}')
+
+  if awk -v x="$sum_dur_dev" 'BEGIN{exit (x>0?0:1)}'; then
+    echo "DEV duration summary (seconds and percent of total):"
+    for ((i=0; i<nsrc_dev; i++)); do
+      dur_i=${per_src_duration_dev[$i]:-0}
+      pct_i=$(awk -v d="$dur_i" -v tot="$sum_dur_dev" 'BEGIN{if (tot>0) printf("%.2f", 100.0*d/tot); else printf("0.00") }')
+      src_base=$(basename "${combine_src_dirs_dev[$i]}")
+      echo "  - [D$((i+1))] $src_base: ${dur_i}s (${pct_i}%)"
+    done
+    hms=$(fmt_hms "$sum_dur_dev")
+    echo "DEV total duration: ${sum_dur_dev}s (${hms})"
+  else
+    echo "DEV duration summary: no duration information found (segments/reco2dur missing)."
+  fi
 fi 
