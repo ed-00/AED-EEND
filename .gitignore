@@ -9,6 +9,11 @@ tools/sctk-2.4.10/
 tools/env.sh
 .nfs*
 
+egs/ami/data 
+egs/ami/ami_data/ 
+egs/ami/local
+egs/ami/ami_public_manual_1.6.2 
+egs/ami/ami_public_manual_1.6.2.zip 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
