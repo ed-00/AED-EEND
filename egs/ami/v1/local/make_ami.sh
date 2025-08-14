@@ -1,0 +1,92 @@
+#!/bin/bash
+# Copyright 2024 Maoxuan Sha (author: Maoxuan Sha)
+# Licensed under the MIT license.
+#
+# This script prepares the AMI data for Kaldi diarization.
+# It parses the AMI XML annotations and audio files to create:
+# - wav.scp
+# - segments
+# - utt2spk
+# - spk2utt
+# - rttm (for evaluation)
+
+# Usage: local/make_ami.sh <AMI_CORPUS_DIR> <output_data_dir>
+# Example: local/make_ami.sh /path/to/AMI_Corpus data/train
+
+AMI_CORPUS_DIR=$1
+OUTPUT_DATA_DIR=$2
+
+if [ -z "$AMI_CORPUS_DIR" ] || [ -z "$OUTPUT_DATA_DIR" ]; then
+  echo "Usage: local/make_ami.sh <AMI_CORPUS_DIR> <output_data_dir>"
+  exit 1
+fi
+
+mkdir -p "${OUTPUT_DATA_DIR}" || exit 1;
+
+echo "Processing AMI data from: ${AMI_CORPUS_DIR}"
+echo "Outputting to: ${OUTPUT_DATA_DIR}"
+
+# --- Initialize files ---
+# Ensure these files are empty or created fresh for each run
+> "${OUTPUT_DATA_DIR}/wav.scp"
+> "${OUTPUT_DATA_DIR}/segments"
+> "${OUTPUT_DATA_DIR}/utt2spk"
+> "${OUTPUT_DATA_DIR}/spk2utt" # Will be generated from utt2spk later
+> "${OUTPUT_DATA_DIR}/rttm"
+
+# Clean up any leftover temporary files from previous runs
+rm -f "${OUTPUT_DATA_DIR}/segments_temp" "${OUTPUT_DATA_DIR}/utt2spk_temp" "${OUTPUT_DATA_DIR}/rttm_temp"
+
+# Find all XML annotation files in the segments directory
+# Use the already downloaded segments files
+SEGMENTS_DIR="ami_public_manual_1.6.2/segments"
+find "${SEGMENTS_DIR}" -name "*.segments.xml" | while IFS= read -r xml_file; do
+  # Extract meeting ID and speaker from the XML file path (e.g., EN2001a.A.segments.xml -> EN2001a)
+  filename=$(basename "${xml_file}")
+  meeting_id=$(echo "${filename}" | cut -d'.' -f1)
+  speaker_id=$(echo "${filename}" | cut -d'.' -f2)
+
+  # Check for audio file
+  audio_file="${AMI_CORPUS_DIR}/audio/${meeting_id}/${meeting_id}.Mix-Headset.wav"
+
+  if [ ! -f "${audio_file}" ]; then
+    echo "Warning: No audio file found for ${meeting_id}: ${audio_file}. Skipping."
+    continue
+  fi
+
+  echo "Processing meeting: ${meeting_id}, speaker: ${speaker_id} with audio file ${audio_file}"
+
+  # Add entry to wav.scp (only once per meeting)
+  if ! grep -q "^${meeting_id} " "${OUTPUT_DATA_DIR}/wav.scp"; then
+    echo "${meeting_id} ${audio_file}" >> "${OUTPUT_DATA_DIR}/wav.scp"
+  fi
+
+  # Use Python script to parse XML and generate segments, utt2spk, and RTTM
+  python3 local/ami_to_rttm.py "${xml_file}" "${meeting_id}" "${speaker_id}" "${OUTPUT_DATA_DIR}/rttm_temp_single" \
+    >> "${OUTPUT_DATA_DIR}/segments_temp" \
+    2>> "${OUTPUT_DATA_DIR}/utt2spk_temp"
+  cat "${OUTPUT_DATA_DIR}/rttm_temp_single" >> "${OUTPUT_DATA_DIR}/rttm_temp"
+  rm -f "${OUTPUT_DATA_DIR}/rttm_temp_single"
+done
+
+# If no XML files were found, the temp files will not be created.
+# We should touch them to prevent the script from failing.
+touch "${OUTPUT_DATA_DIR}/segments_temp" "${OUTPUT_DATA_DIR}/utt2spk_temp" "${OUTPUT_DATA_DIR}/rttm_temp"
+
+# Sort and unique the temporary files, then move them to final locations
+# This ensures correct Kaldi format and removes duplicates.
+sort -u "${OUTPUT_DATA_DIR}/segments_temp" > "${OUTPUT_DATA_DIR}/segments"
+sort -u "${OUTPUT_DATA_DIR}/utt2spk_temp" > "${OUTPUT_DATA_DIR}/utt2spk"
+sort -u "${OUTPUT_DATA_DIR}/rttm_temp" > "${OUTPUT_DATA_DIR}/rttm"
+
+# Clean up temporary files
+rm "${OUTPUT_DATA_DIR}/segments_temp" "${OUTPUT_DATA_DIR}/utt2spk_temp" "${OUTPUT_DATA_DIR}/rttm_temp"
+
+# Create spk2utt from utt2spk (standard Kaldi utility)
+utils/utt2spk_to_spk2utt.pl "${OUTPUT_DATA_DIR}/utt2spk" > "${OUTPUT_DATA_DIR}/spk2utt" || exit 1;
+
+# Fix and validate the data directory (standard Kaldi utilities)
+utils/fix_data_dir.sh "${OUTPUT_DATA_DIR}" || exit 1;
+utils/validate_data_dir.sh --no-feats --no-text "${OUTPUT_DATA_DIR}" || exit 1;
+
+echo "AMI data preparation complete for ${OUTPUT_DATA_DIR}" 

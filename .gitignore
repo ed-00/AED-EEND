@@ -8,12 +8,12 @@ tools/sctk-2.4.10-20151007-1312Z.tar.bz2
 tools/sctk-2.4.10/
 tools/env.sh
 .nfs*
-
-egs/ami/data 
-egs/ami/ami_data/ 
-egs/ami/local
-egs/ami/ami_public_manual_1.6.2 
-egs/ami/ami_public_manual_1.6.2.zip 
+*.wav
+egs/v1/ami/data 
+egs/v1/ami/ami_data/ 
+egs/v1/ami/local
+egs/v1/ami/ami_public_manual_1.6.2 
+egs/v1/ami/ami_public_manual_1.6.2.zip 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -120,3 +120,5 @@ venv.bak/
 .mypy_cache/
 tools/condaenv.6vwlf64_.requirements.txt
 
+egs/ami/v1/AMI_Corpus_Root/*
+egs/ami/v1/ami_public_manual_1.6.2/*
