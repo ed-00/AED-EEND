@@ -21,10 +21,23 @@ if [ -z "$AMI_CORPUS_DIR" ] || [ -z "$OUTPUT_DATA_DIR" ]; then
   exit 1
 fi
 
+# Ensure required tools are available
+if ! command -v sox >/dev/null 2>&1; then
+  echo "Error: sox is required for resampling but was not found in PATH." >&2
+  exit 1
+fi
+
+# Target sampling rate and directory to store resampled audio
+TARGET_SR=8000
+RESAMPLED_DIR="data/ami_wav_${TARGET_SR}"
+mkdir -p "${RESAMPLED_DIR}" || exit 1
+
 mkdir -p "${OUTPUT_DATA_DIR}" || exit 1;
 
 echo "Processing AMI data from: ${AMI_CORPUS_DIR}"
 echo "Outputting to: ${OUTPUT_DATA_DIR}"
+
+echo "Resampled audio will be stored in: ${RESAMPLED_DIR} at ${TARGET_SR} Hz"
 
 # --- Initialize files ---
 # Ensure these files are empty or created fresh for each run
@@ -56,15 +69,26 @@ find "${SEGMENTS_DIR}" -name "*.segments.xml" | while IFS= read -r xml_file; do
 
   echo "Processing meeting: ${meeting_id}, speaker: ${speaker_id} with audio file ${audio_file}"
 
+  # Prepare resampled audio path and resample if needed
+  resampled_file="${RESAMPLED_DIR}/${meeting_id}.wav"
+  if [ ! -f "${resampled_file}" ]; then
+    echo "Resampling ${audio_file} -> ${resampled_file} at ${TARGET_SR} Hz"
+    # Keep channel count, just change sampling rate; write standard WAV
+    sox "${audio_file}" -r ${TARGET_SR} "${resampled_file}"
+    if [ $? -ne 0 ]; then
+      echo "Error: sox failed to resample ${audio_file}" >&2
+      exit 1
+    fi
+  fi
+
   # Add entry to wav.scp (only once per meeting)
   if ! grep -q "^${meeting_id} " "${OUTPUT_DATA_DIR}/wav.scp"; then
-    echo "${meeting_id} ${audio_file}" >> "${OUTPUT_DATA_DIR}/wav.scp"
+    echo "${meeting_id} ${resampled_file}" >> "${OUTPUT_DATA_DIR}/wav.scp"
   fi
 
   # Use Python script to parse XML and generate segments, utt2spk, and RTTM
-  python3 local/ami_to_rttm.py "${xml_file}" "${meeting_id}" "${speaker_id}" "${OUTPUT_DATA_DIR}/rttm_temp_single" \
-    >> "${OUTPUT_DATA_DIR}/segments_temp" \
-    2>> "${OUTPUT_DATA_DIR}/utt2spk_temp"
+  python3 local/ami_to_rttm.py "${xml_file}" "${meeting_id}" "${speaker_id}" \
+    "${OUTPUT_DATA_DIR}/segments_temp" "${OUTPUT_DATA_DIR}/utt2spk_temp" "${OUTPUT_DATA_DIR}/rttm_temp_single"
   cat "${OUTPUT_DATA_DIR}/rttm_temp_single" >> "${OUTPUT_DATA_DIR}/rttm_temp"
   rm -f "${OUTPUT_DATA_DIR}/rttm_temp_single"
 done

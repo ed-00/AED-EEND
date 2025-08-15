@@ -1,1 +1,1 @@
-. ../../../AED-EEND/tools/env.sh 
+. ../../../tools/env.sh 
