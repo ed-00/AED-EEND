@@ -72,9 +72,9 @@ find "${SEGMENTS_DIR}" -name "*.segments.xml" | while IFS= read -r xml_file; do
   # Prepare resampled audio path and resample if needed
   resampled_file="${RESAMPLED_DIR}/${meeting_id}.wav"
   if [ ! -f "${resampled_file}" ]; then
-    echo "Resampling ${audio_file} -> ${resampled_file} at ${TARGET_SR} Hz"
-    # Keep channel count, just change sampling rate; write standard WAV
-    sox "${audio_file}" -r ${TARGET_SR} "${resampled_file}"
+    echo "Resampling ${audio_file} -> ${resampled_file} at ${TARGET_SR} Hz (mono)"
+    # Downmix to mono and resample to target rate; write standard WAV
+    sox "${audio_file}" -c 1 -r ${TARGET_SR} "${resampled_file}"
     if [ $? -ne 0 ]; then
       echo "Error: sox failed to resample ${audio_file}" >&2
       exit 1

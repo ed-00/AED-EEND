@@ -37,9 +37,6 @@ combine_src_dirs=(
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns2_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns3_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns4_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns5_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns6_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns7_beta2_100000
 )
 
 # Target total number of items across all sources for the selected unit

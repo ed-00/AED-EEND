@@ -33,9 +33,6 @@ combine_src_dirs=(
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns2_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns3_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns4_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns5_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns6_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/train_clean_5_ns7_beta2_100000
 )
 
 # Choose one of the following to define quotas per source (same length as combine_src_dirs):
@@ -61,14 +58,11 @@ combine_src_dirs_dev=(
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns2_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns3_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns4_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns5_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns6_beta2_100000
-  /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns7_beta2_100000
 )
 # Choose either percentages or counts for dev (counts default to 500 each)
 combine_src_percentages_dev=()
 # Total mixtures (recordings) for dev (7 sources × 500 each by default)
-combine_total_reco_dev=3500
+combine_total_reco_dev=1000
 combine_src_counts_dev=()
 combine_cap_to_available_dev=true
 

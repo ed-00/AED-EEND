@@ -57,7 +57,7 @@ find "${ICSI_CORPUS_DIR}/NIST_Trans" -name "*.xml" | while IFS= read -r xml_file
     if [ -f "${ICSI_CORPUS_DIR}/audio/${meeting_id}.wav" ]; then
       audio_file_source="${ICSI_CORPUS_DIR}/audio/${meeting_id}.wav"
       echo "Resampling WAV: ${audio_file_source} -> ${resampled_file} at ${TARGET_SR} Hz"
-      sox "${audio_file_source}" -r ${TARGET_SR} "${resampled_file}" || \
+      sox "${audio_file_source}" -c 1 -r ${TARGET_SR} "${resampled_file}" || \
         { echo "Error: sox failed to resample ${audio_file_source}" >&2; exit 1; }
     elif [ -f "${ICSI_CORPUS_DIR}/audio/${meeting_id}.sph" ]; then
       audio_file_source="${ICSI_CORPUS_DIR}/audio/${meeting_id}.sph"

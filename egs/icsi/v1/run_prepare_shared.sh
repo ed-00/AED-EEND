@@ -45,12 +45,12 @@ if [ $stage -le 1 ]; then
     train_set=data/icsi_train
     eval_set=data/icsi_eval
 
-    # We create a speaker-independent split where the evaluation set is approximately
-    # 10% of the total speakers, and no speaker in the eval set appears in the train set.
-    # This is a more robust splitting method than the original meeting-based split.
+    # We create a speaker-independent split where the evaluation set targets
+    # 10% of the TOTAL SEGMENT DURATION, and no speaker in the eval set
+    # appears in the train set.
     if ! utils/validate_data_dir.sh --no-text --no-feats "$train_set" || ! utils/validate_data_dir.sh --no-text --no-feats "$eval_set"; then
-        echo "Creating speaker-independent training and evaluation sets..."
-        # The new script handles the splitting logic correctly.
+        echo "Creating duration-targeted speaker-independent training (90%) and evaluation (10%) sets..."
+        # The new script handles the splitting logic by duration.
         local/create_speaker_independent_split.sh data/icsi_all "$train_set" "$eval_set"
         if [ $? -ne 0 ]; then
             echo "Error during speaker-independent split. Exiting." >&2
