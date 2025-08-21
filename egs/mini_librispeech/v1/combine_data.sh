@@ -51,7 +51,7 @@ combine_cap_to_available=true
 
 # --- Dev Configuration (built in the same run) -------------------------------
 # Destination combined data dir for dev
-combine_dest_dir_dev=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1to7_500each
+combine_dest_dir_dev=/workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1to4_500each
 # Dev sources
 combine_src_dirs_dev=(
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns1_beta2_100000
@@ -59,10 +59,10 @@ combine_src_dirs_dev=(
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns3_beta2_100000
   /workspace/EENDv1/egs/mini_librispeech/v1/data/simu/data/dev_clean_2_ns4_beta2_100000
 )
-# Choose either percentages or counts for dev (counts default to 500 each)
+# Choose either percentages or counts for dev (counts default to 1000 each)
 combine_src_percentages_dev=()
-# Total mixtures (recordings) for dev (7 sources × 500 each by default)
-combine_total_reco_dev=1000
+# Total mixtures (recordings) for dev (4 sources × 1000 each by default)
+combine_total_reco_dev=4000
 combine_src_counts_dev=()
 combine_cap_to_available_dev=true
 
@@ -89,8 +89,6 @@ if [ ${#combine_src_counts[@]} -eq 0 ] && [ ${#combine_src_percentages[@]} -eq 0
   done
 fi
 
-# Disable CLI parsing; values are hard-coded above
-# . utils/parse_options.sh || exit 1
 
 # --- Validation --------------------------------------------------------------
 if [ ${#combine_src_dirs[@]} -eq 0 ]; then
